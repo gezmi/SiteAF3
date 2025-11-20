@@ -645,26 +645,26 @@ def main(args):
                 # Use the original method as a fallback
                 if args.verbose:
                     print(f"Using original embedding method (protein-nucleic complex)")
-            embedding_data = embedder.struct_emb_af3(
-                pdb_file=str(pdb_path),
-                db_dir=args.db_dir if (args.use_af3_msa_for_embedding or args.use_pocket_masked_af3_msa_for_embedding) else None,
-                msa_dir=None, 
-                use_af3_msa=args.use_af3_msa_for_embedding,
-                use_pocket_msa=args.use_pocket_msa_for_embedding,
-                use_hotspot_msa=args.use_hotspot_msa_for_embedding,
-                use_pocket_masked_af3_msa=args.use_pocket_masked_af3_msa_for_embedding,
-                hotspot_cutoff=args.hotspot_cutoff,
-                pocket_cutoff=args.pocket_cutoff,
-                ligand_sequences_override=ligand_specs,
-                ligand_specs=ligand_specs,
-                explicit_protein_chain_ids=receptor_chain_ids,
-                explicit_ligand_chain_ids=ligand_chain_ids,
-                rng_seed_override=seed_value,
-                predefined_hotspot_pdb=str(hotspot_pdb_path) if hotspot_pdb_path else None,
-                predefined_pocket_pdb=str(pocket_pdb_path) if pocket_pdb_path else None,
-                receptor_type=receptor_type_final,
-                ligand_type=ligand_type_final
-            )
+                    embedding_data = embedder.struct_emb_af3(
+                        pdb_file=str(pdb_path),
+                        db_dir=args.db_dir if (args.use_af3_msa_for_embedding or args.use_pocket_masked_af3_msa_for_embedding) else None,
+                        msa_dir=None, 
+                        use_af3_msa=args.use_af3_msa_for_embedding,
+                        use_pocket_msa=args.use_pocket_msa_for_embedding,
+                        use_hotspot_msa=args.use_hotspot_msa_for_embedding,
+                        use_pocket_masked_af3_msa=args.use_pocket_masked_af3_msa_for_embedding,
+                        hotspot_cutoff=args.hotspot_cutoff,
+                        pocket_cutoff=args.pocket_cutoff,
+                        ligand_sequences_override=ligand_specs,
+                        ligand_specs=ligand_specs,
+                        explicit_protein_chain_ids=receptor_chain_ids,
+                        explicit_ligand_chain_ids=ligand_chain_ids,
+                        rng_seed_override=seed_value,
+                        predefined_hotspot_pdb=str(hotspot_pdb_path) if hotspot_pdb_path else None,
+                        predefined_pocket_pdb=str(pocket_pdb_path) if pocket_pdb_path else None,
+                        receptor_type=receptor_type_final,
+                        ligand_type=ligand_type_final
+                    )
         except Exception as e:
             print(f"Error during embedding generation for seed {seed_value}: {e}")
             if args.verbose:
