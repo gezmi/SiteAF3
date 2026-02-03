@@ -535,9 +535,11 @@ def _write_outputs_custom(
                 print(f"Create sample directory: {sample_dir}")
 
             try:
+                sample_name = f"{current_job_name}_seed-{current_seed}_sample-{sample_idx}"
                 post_processing.write_output(
                     inference_result=inference_result_obj,
-                    output_dir=str(sample_dir)
+                    output_dir=str(sample_dir),
+                    name=sample_name
                 )
                 if verbose:
                     print(f"Output for sample {sample_idx} (seed {current_seed}) written to {sample_dir}")
