@@ -281,7 +281,7 @@ dependencies:
   - zlib-ng=2.2.4=h7955e40_0
   - zstd=1.5.7=hb8e6e7a_1
   - pip:
-      - alphafold3==3.0.1
+#      - alphafold3==3.0.1
       - annotated-types==0.7.0
       - biopython==1.85
       - cftime==1.6.4.post1
