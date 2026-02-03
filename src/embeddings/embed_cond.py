@@ -658,7 +658,7 @@ class Embedder():
         except Exception as e:
             raise ValueError(f"Failed to generate hotspot mask from predefined hotspot PDB file: {e}")
     
-    def seq_emb_af3(self, pdb_file, chain_id=None, msa_dir=None, db_dir=None, use_af3_msa=True, use_pocket_msa=False, use_hotspot_msa=False, use_pocket_masked_af3_msa=False, hotspot_cutoff=8.0, pocket_cutoff=10.0, ligand_sequences_override=None, ligand_specs: dict = None, explicit_protein_chain_ids: list = None, explicit_ligand_chain_ids: list = None, rng_seed_override: int = None, predefined_hotspot_pdb: str = None, predefined_pocket_pdb: str = None, receptor_type: str = 'protein', ligand_type: str = 'nucleic'):
+    def seq_emb_af3(self, pdb_file, chain_id=None, msa_dir=None, db_dir=None, use_af3_msa=True, use_pocket_msa=False, use_hotspot_msa=False, use_pocket_masked_af3_msa=False, hotspot_cutoff=8.0, pocket_cutoff=10.0, ligand_sequences_override=None, ligand_specs: dict = None, explicit_protein_chain_ids: list = None, explicit_ligand_chain_ids: list = None, rng_seed_override: int = None, predefined_hotspot_pdb: str = None, predefined_pocket_pdb: str = None, receptor_type: str = 'protein', ligand_type: str = 'nucleic', precomputed_msa: dict = None):
         """
         Read PDB file, extract sequence information
         Use pre-trained AlphaFold3 to generate sequence embeddings
@@ -706,9 +706,9 @@ class Embedder():
         
         # Convert PDB file to folding_input (process chains and sequences)
         fold_input = self._pdb_to_fold_input(
-            pdb_file, 
-            chain_id, 
-            use_af3_msa, 
+            pdb_file,
+            chain_id,
+            use_af3_msa,
             use_pocket_msa,
             use_hotspot_msa,
             use_pocket_masked_af3_msa,
@@ -722,11 +722,13 @@ class Embedder():
             predefined_hotspot_pdb=predefined_hotspot_pdb,
             predefined_pocket_pdb=predefined_pocket_pdb,
             receptor_type=receptor_type,
-            ligand_type=ligand_type
+            ligand_type=ligand_type,
+            precomputed_msa=precomputed_msa,
         )
         
         # If using AlphaFold3's MSA process (including pocket masked mode) and no MSA directory provided, need to automatically calculate MSA
-        if (use_af3_msa or use_pocket_masked_af3_msa) and msa_dir is None:
+        # Skip data pipeline when precomputed MSA is provided — precomputed data takes priority
+        if (use_af3_msa or use_pocket_masked_af3_msa) and msa_dir is None and not precomputed_msa:
             
             # Create data pipeline configuration
             data_pipeline_config = self._create_data_pipeline_config(db_dir=db_dir)
@@ -755,6 +757,8 @@ class Embedder():
             if self.verbose:
                 print("AlphaFold3 MSA and template generation completed")
                 self._print_msa_stats(fold_input)
+        elif precomputed_msa:
+            print(f"Skipping AF3 data pipeline: using precomputed MSA for {len(precomputed_msa)} chain(s)")
         elif not use_af3_msa and not use_pocket_masked_af3_msa and self.verbose:
             print("Skipping AlphaFold3 MSA generation step")
         
@@ -1097,7 +1101,7 @@ class Embedder():
                 print(f"  RNA chain {chain.id}: {len(chain.sequence)} residues")
                 print(f"    MSA depth: {unpaired_depth}")
     
-    def _pdb_to_fold_input(self, pdb_file, chain_id=None, use_af3_msa=True, use_pocket_msa=False, use_hotspot_msa=False, use_pocket_masked_af3_msa=False, hotspot_cutoff=8.0, pocket_cutoff=10.0, ligand_sequences_override=None, ligand_specs: dict = None, explicit_protein_chain_ids: list = None, explicit_ligand_chain_ids: list = None, rng_seed_override: int = None, predefined_hotspot_pdb: str = None, predefined_pocket_pdb: str = None, receptor_type: str = 'protein', ligand_type: str = 'nucleic'):
+    def _pdb_to_fold_input(self, pdb_file, chain_id=None, use_af3_msa=True, use_pocket_msa=False, use_hotspot_msa=False, use_pocket_masked_af3_msa=False, hotspot_cutoff=8.0, pocket_cutoff=10.0, ligand_sequences_override=None, ligand_specs: dict = None, explicit_protein_chain_ids: list = None, explicit_ligand_chain_ids: list = None, rng_seed_override: int = None, predefined_hotspot_pdb: str = None, predefined_pocket_pdb: str = None, receptor_type: str = 'protein', ligand_type: str = 'nucleic', precomputed_msa: dict = None):
         """
         Convert PDB file to AlphaFold3 input format
         
@@ -1371,14 +1375,15 @@ class Embedder():
                 
                 # 3. Generate MSA and create chain object
                 chain_obj = self._create_chain_with_msa(
-                    chain_info, mask_info, 
+                    chain_info, mask_info,
                     use_af3_msa, use_pocket_msa, use_hotspot_msa,
-                    custom_msa_data, current_ligand_specs, use_pocket_masked_af3_msa
+                    custom_msa_data, current_ligand_specs, use_pocket_masked_af3_msa,
+                    precomputed_msa=precomputed_msa
                 )
-                
+
                 if chain_obj:
                     chains.append(chain_obj)
-        
+
         # Add any ligands from ligand_specs that were not in the PDB file
         for spec_chain_id, spec_info in current_ligand_specs.items():
             if spec_chain_id not in processed_pdb_chain_ids:
@@ -1435,7 +1440,8 @@ class Embedder():
                     chain_obj = self._create_chain_with_msa(
                         new_chain_info, empty_mask_info,
                         use_af3_msa, use_pocket_msa, use_hotspot_msa,
-                        custom_msa_data, current_ligand_specs, use_pocket_masked_af3_msa
+                        custom_msa_data, current_ligand_specs, use_pocket_masked_af3_msa,
+                        precomputed_msa=precomputed_msa
                     )
                 
                 if chain_obj:
@@ -1555,7 +1561,7 @@ class Embedder():
             
         return seq_info
 
-    def struct_emb_af3(self, pdb_file, db_dir=None, msa_dir=None, use_af3_msa=True, use_pocket_msa=False, use_hotspot_msa=False, use_pocket_masked_af3_msa=False, hotspot_cutoff=8.0, pocket_cutoff=10.0, ligand_sequences_override=None, ligand_specs: dict = None, explicit_protein_chain_ids: list = None, explicit_ligand_chain_ids: list = None, rng_seed_override: int = None, predefined_hotspot_pdb: str = None, predefined_pocket_pdb: str = None, receptor_type: str = 'protein', ligand_type: str = 'nucleic'):
+    def struct_emb_af3(self, pdb_file, db_dir=None, msa_dir=None, use_af3_msa=True, use_pocket_msa=False, use_hotspot_msa=False, use_pocket_masked_af3_msa=False, hotspot_cutoff=8.0, pocket_cutoff=10.0, ligand_sequences_override=None, ligand_specs: dict = None, explicit_protein_chain_ids: list = None, explicit_ligand_chain_ids: list = None, rng_seed_override: int = None, predefined_hotspot_pdb: str = None, predefined_pocket_pdb: str = None, receptor_type: str = 'protein', ligand_type: str = 'nucleic', precomputed_msa: dict = None):
         """
         Generate AlphaFold 3 compatible embeddings, including structure information and atom masks.
 
@@ -1576,6 +1582,9 @@ class Embedder():
             rng_seed_override: Optional integer, to override default random seeds in folding_input, and used for JAX PRNGKey.
             predefined_hotspot_pdb: Optional predefined hotspot PDB file path
             predefined_pocket_pdb: Optional predefined pocket PDB file path
+            precomputed_msa: Optional dict mapping chain_id to pre-existing MSA/template data.
+                When present for a chain, skips MSA generation and uses this data directly.
+                Format: {chain_id: {"unpaired_msa": str, "paired_msa": str, "templates": list}}
 
         Returns:
             A dictionary containing embeddings and related information
@@ -1600,10 +1609,10 @@ class Embedder():
         # Use seq_emb_af3 to generate basic sequence embeddings
         # Note: Here we pass chain_id=None to ensure all chains are included in the base embeddings
         base_embeddings = self.seq_emb_af3(
-            pdb_file, 
-            chain_id=None, 
-            msa_dir=msa_dir, 
-            db_dir=db_dir, 
+            pdb_file,
+            chain_id=None,
+            msa_dir=msa_dir,
+            db_dir=db_dir,
             use_af3_msa=use_af3_msa,
             use_pocket_msa=use_pocket_msa,
             use_hotspot_msa=use_hotspot_msa,
@@ -1618,7 +1627,8 @@ class Embedder():
             predefined_hotspot_pdb=predefined_hotspot_pdb,
             predefined_pocket_pdb=predefined_pocket_pdb,
             receptor_type=receptor_type,
-            ligand_type=ligand_type
+            ligand_type=ligand_type,
+            precomputed_msa=precomputed_msa,
         )
         num_tokens = base_embeddings['embeddings']['single'].shape[0]
         
@@ -2281,10 +2291,10 @@ class Embedder():
             'hotspot_mask_values': current_chain_hotspot_mask_values
         }
 
-    def _create_chain_with_msa(self, chain_info, mask_info, use_af3_msa, use_pocket_msa, use_hotspot_msa, custom_msa_data, current_ligand_specs=None, use_pocket_masked_af3_msa=False):
+    def _create_chain_with_msa(self, chain_info, mask_info, use_af3_msa, use_pocket_msa, use_hotspot_msa, custom_msa_data, current_ligand_specs=None, use_pocket_masked_af3_msa=False, precomputed_msa=None):
         """
         Create folding_input chain object based on chain information and mask information
-        
+
         Args:
             chain_info: Chain information dictionary
             mask_info: Mask information dictionary
@@ -2294,17 +2304,18 @@ class Embedder():
             custom_msa_data: Custom MSA data dictionary
             current_ligand_specs: ligand_specs configuration dictionary
             use_pocket_masked_af3_msa: Whether to use pocket masked AF3 MSA
+            precomputed_msa: Optional dict mapping chain_id to pre-existing MSA data
 
         Returns:
             folding_input chain object, if creation fails, return None
         """
         chain_id = chain_info['chain_id']
         chain_type = chain_info['chain_type']
-        
+
         if chain_type in ["rna", "dna"]:
             return self._create_nucleic_chain(chain_info, use_af3_msa or use_pocket_masked_af3_msa, current_ligand_specs)
         elif chain_type == "protein":
-            return self._create_protein_chain(chain_info, mask_info, use_af3_msa, use_pocket_msa, use_hotspot_msa, custom_msa_data, use_pocket_masked_af3_msa)
+            return self._create_protein_chain(chain_info, mask_info, use_af3_msa, use_pocket_msa, use_hotspot_msa, custom_msa_data, use_pocket_masked_af3_msa, precomputed_msa=precomputed_msa)
         elif chain_type == "small_molecule":
             return self._create_small_molecule_chain(chain_info)
         else:
@@ -2360,13 +2371,27 @@ class Embedder():
                 id=chain_id, sequence=sequence, modifications=[]
             )
 
-    def _create_protein_chain(self, chain_info, mask_info, use_af3_msa, use_pocket_msa, use_hotspot_msa, custom_msa_data, use_pocket_masked_af3_msa=False):
+    def _create_protein_chain(self, chain_info, mask_info, use_af3_msa, use_pocket_msa, use_hotspot_msa, custom_msa_data, use_pocket_masked_af3_msa=False, precomputed_msa=None):
         """Create protein chain object"""
         chain_id = chain_info['chain_id']
         sequence = chain_info['sequence']
+
+        # Use precomputed MSA if available for this chain (e.g. from AF3 conversion)
+        if precomputed_msa and chain_id in precomputed_msa:
+            pre = precomputed_msa[chain_id]
+            if self.verbose:
+                unpaired_len = len(pre.get("unpaired_msa") or "") if pre.get("unpaired_msa") else 0
+                print(f"Using precomputed MSA for protein chain {chain_id} (unpaired_msa: {unpaired_len} chars)")
+            return folding_input.ProteinChain(
+                id=chain_id, sequence=sequence, ptms=[],
+                unpaired_msa=pre.get("unpaired_msa"),
+                paired_msa=pre.get("paired_msa"),
+                templates=pre.get("templates") if pre.get("templates") is not None else [],
+            )
+
         pocket_mask_values = mask_info['pocket_mask_values']
         hotspot_mask_values = mask_info['hotspot_mask_values']
-        
+
         # Generate custom MSA sequence
         final_unpaired_msa_str = None
         pocket_msa_seq_generated = False

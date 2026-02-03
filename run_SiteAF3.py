@@ -245,6 +245,18 @@ def main(args):
     if args.verbose and receptor_chain_ids:
         print(f"Parsed receptor: type={receptor_type_from_config}, chain IDs={receptor_chain_ids}")
 
+    # Read precomputed MSA from receptor config (e.g. from AF3-converted JSON)
+    # Only activate if unpairedMsa key is explicitly present (distinguishes converted JSON from hand-written configs)
+    precomputed_msa = {}
+    if "unpairedMsa" in receptor_config:
+        for rc_id in receptor_chain_ids:
+            precomputed_msa[rc_id] = {
+                "unpaired_msa": receptor_config.get("unpairedMsa") or "",
+                "paired_msa": receptor_config.get("pairedMsa") or "",
+            }
+        if args.verbose:
+            print(f"Found precomputed receptor MSA for chains {receptor_chain_ids}")
+
     # Parse ligand configuration
     ligand_specs = {}
     ligand_chain_ids = []
@@ -265,8 +277,16 @@ def main(args):
                     }
                     ligand_chain_ids.append(chain_id)
                     ligand_type_from_config = 'protein'
+                    # Read precomputed MSA/templates if unpaired_msa key is explicitly present
+                    if "unpaired_msa" in protein_info:
+                        precomputed_msa[chain_id] = {
+                            "unpaired_msa": protein_info.get("unpaired_msa") or "",
+                            "paired_msa": protein_info.get("pairedMsa") or "",
+                            "templates": protein_info.get("templates"),
+                        }
                     if args.verbose:
-                        print(f"Parsed protein ligand: chain ID={chain_id}, sequence length={len(sequence)}")
+                        has_pre = chain_id in precomputed_msa
+                        print(f"Parsed protein ligand: chain ID={chain_id}, sequence length={len(sequence)}, precomputed_msa={has_pre}")
                 else:
                     print(f"Warning: Protein ligand missing 'id' or 'sequence'. Skipping.")
                 continue
@@ -301,10 +321,15 @@ def main(args):
                         "sequence": sequence,
                         "type": nucleic_type
                     }
+                    # Read precomputed MSA if present (uses existing unpaired_msa_preference mechanism)
+                    nuc_unpaired = nucleic_info.get("unpaired_msa")
+                    if nuc_unpaired is not None:
+                        ligand_specs[chain_id]["unpaired_msa_preference"] = nuc_unpaired
                     ligand_chain_ids.append(chain_id)
                     ligand_type_from_config = 'nucleic'
                     if args.verbose:
-                        print(f"Parsed {nucleic_type.upper()} ligand: chain ID={chain_id}, sequence length={len(sequence)}")
+                        has_pre = "unpaired_msa_preference" in ligand_specs[chain_id]
+                        print(f"Parsed {nucleic_type.upper()} ligand: chain ID={chain_id}, sequence length={len(sequence)}, precomputed_msa={has_pre}")
                 else:
                     print(f"Warning: {nucleic_type.upper()} ligand missing 'id' or 'sequence'. Skipping.")
                 continue
@@ -624,7 +649,7 @@ def main(args):
                 embedding_data = embedder.struct_emb_af3(
                     pdb_file=str(pdb_path),
                     db_dir=args.db_dir if (args.use_af3_msa_for_embedding or args.use_pocket_masked_af3_msa_for_embedding) else None,
-                    msa_dir=None, 
+                    msa_dir=None,
                     use_af3_msa=args.use_af3_msa_for_embedding,
                     use_pocket_msa=args.use_pocket_msa_for_embedding,
                     use_hotspot_msa=args.use_hotspot_msa_for_embedding,
@@ -639,7 +664,8 @@ def main(args):
                     predefined_hotspot_pdb=str(hotspot_pdb_path) if hotspot_pdb_path else None,
                     predefined_pocket_pdb=str(pocket_pdb_path) if pocket_pdb_path else None,
                     receptor_type=receptor_type_final,
-                    ligand_type=ligand_type_final
+                    ligand_type=ligand_type_final,
+                    precomputed_msa=precomputed_msa if precomputed_msa else None,
                 )
             else:
                 # Use the original method as a fallback
@@ -648,7 +674,7 @@ def main(args):
                     embedding_data = embedder.struct_emb_af3(
                         pdb_file=str(pdb_path),
                         db_dir=args.db_dir if (args.use_af3_msa_for_embedding or args.use_pocket_masked_af3_msa_for_embedding) else None,
-                        msa_dir=None, 
+                        msa_dir=None,
                         use_af3_msa=args.use_af3_msa_for_embedding,
                         use_pocket_msa=args.use_pocket_msa_for_embedding,
                         use_hotspot_msa=args.use_hotspot_msa_for_embedding,
@@ -663,7 +689,8 @@ def main(args):
                         predefined_hotspot_pdb=str(hotspot_pdb_path) if hotspot_pdb_path else None,
                         predefined_pocket_pdb=str(pocket_pdb_path) if pocket_pdb_path else None,
                         receptor_type=receptor_type_final,
-                        ligand_type=ligand_type_final
+                        ligand_type=ligand_type_final,
+                        precomputed_msa=precomputed_msa if precomputed_msa else None,
                     )
         except Exception as e:
             print(f"Error during embedding generation for seed {seed_value}: {e}")
