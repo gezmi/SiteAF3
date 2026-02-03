@@ -2146,7 +2146,19 @@ class Embedder():
                     if verbose:
                         print(f"Warning: Unknown ligand type '{spec['type']}' for chain {current_chain_id}.")
                     chain_type_to_use = "rna"
-                
+
+                # If this chain exists in PDB, validate sequence length matches
+                pdb_residues = [r for r in chain_pdb_obj if r.id[0] == ' ']
+                pdb_seq_len = len(pdb_residues)
+                if pdb_seq_len > 0 and len(sequence_to_use) != pdb_seq_len:
+                    pdb_sequence = "".join(
+                        residue_constants.restype_3to1.get(r.resname, "X") for r in pdb_residues
+                    )
+                    print(f"WARNING: ligand_specs sequence for chain {current_chain_id} "
+                          f"has {len(sequence_to_use)} residues but PDB structure has "
+                          f"{pdb_seq_len} residues. Using PDB sequence instead.")
+                    sequence_to_use = pdb_sequence
+
                 if verbose:
                     print(f"Chain {current_chain_id} sequence and type are overridden by ligand_specs "
                           f"(type: {chain_type_to_use.upper()}, length: {len(sequence_to_use)}): "
@@ -2494,76 +2506,76 @@ class Embedder():
             return None
 
 
-# def test_seq_emb_af3(pdb_file, weight_dir=None, verbose=True):
-#     """
-#     测试函数：生成序列嵌入并打印统计信息
+def test_seq_emb_af3(pdb_file, weight_dir=None, verbose=True):
+     """
+     测试函数：生成序列嵌入并打印统计信息
     
-#     Args:
-#         pdb_file: PDB文件路径
-#         weight_dir: 权重目录
-#         verbose: 是否显示详细输出
+     Args:
+         pdb_file: PDB文件路径
+         weight_dir: 权重目录
+         verbose: 是否显示详细输出
         
-#     Returns:
-#         bool: 成功为True，失败为False
-#     """
-#     try:
-#         # 初始化嵌入器
-#         embedder = Embedder(weight_dir=weight_dir, verbose=verbose)
+     Returns:
+         bool: 成功为True，失败为False
+     """
+     try:
+         # 初始化嵌入器
+         embedder = Embedder(weight_dir=weight_dir, verbose=verbose)
         
-#         # 记录开始时间
-#         start_time = time.time()
+         # 记录开始时间
+         start_time = time.time()
         
-#         # 生成嵌入
-#         data = embedder.seq_emb_af3(pdb_file)
+         # 生成嵌入
+         data = embedder.seq_emb_af3(pdb_file)
         
-#         # 计算运行时间
-#         end_time = time.time()
-#         elapsed = end_time - start_time
+         # 计算运行时间
+         end_time = time.time()
+         elapsed = end_time - start_time
         
-#         # 打印统计信息
-#         if verbose:
-#             print(f"生成嵌入用时: {elapsed:.2f}秒")
-            
-#             # 嵌入统计信息
-#             if 'embeddings' in data and 'single' in data['embeddings']:
-#                 emb = data['embeddings']['single']
-#                 pair_emb = data['embeddings'].get('pair')
+         # 打印统计信息
+         if verbose:
+             print(f"生成嵌入用时: {elapsed:.2f}秒")
+           
+             # 嵌入统计信息
+             if 'embeddings' in data and 'single' in data['embeddings']:
+                 emb = data['embeddings']['single']
+                 pair_emb = data['embeddings'].get('pair')
                 
-#                 print(f"嵌入形状: {emb.shape}")
-#                 if pair_emb is not None:
-#                     print(f"配对嵌入形状: {pair_emb.shape}")
+                 print(f"嵌入形状: {emb.shape}")
+                 if pair_emb is not None:
+                     print(f"配对嵌入形状: {pair_emb.shape}")
                 
-#                 print(f"均值: {np.mean(emb):.4f}")
-#                 print(f"标准差: {np.std(emb):.4f}")
-#                 print(f"最小值: {np.min(emb):.4f}")
-#                 print(f"最大值: {np.max(emb):.4f}")
+                 print(f"均值: {np.mean(emb):.4f}")
+                 print(f"标准差: {np.std(emb):.4f}")
+                 print(f"最小值: {np.min(emb):.4f}")
+                 print(f"最大值: {np.max(emb):.4f}")
                 
-#             # 序列信息
-#             if 'seq_info' in data:
-#                 seq_info = data['seq_info']
-#                 print(f"序列名称: {seq_info['name']}")
-#                 for i, chain in enumerate(seq_info['chains']):
-#                     print(f"链 {i+1}: {chain['chain_id']}, 类型: {chain['chain_type']}, 长度: {len(chain['sequence'])}")
+             # 序列信息
+             if 'seq_info' in data:
+                 seq_info = data['seq_info']
+                 print(f"序列名称: {seq_info['name']}")
+                 for i, chain in enumerate(seq_info['chains']):
+                     print(f"链 {i+1}: {chain['chain_id']}, 类型: {chain['chain_type']}, 长度: {len(chain['sequence'])}")
         
-#         # 测试特定链的嵌入
-#         if 'seq_info' in data and 'chains' in data['seq_info'] and len(data['seq_info']['chains']) > 0:
-#             chain_id = data['seq_info']['chains'][0]['chain_id']
-#             try:
-#                 chain_data = embedder.seq_emb_af3(pdb_file, chain_id=chain_id)
-#                 if verbose:
-#                     print(f"成功生成链 {chain_id} 的嵌入 (形状: {chain_data['embeddings']['single'].shape})")
-#             except Exception as e:
-#                 print(f"生成链 {chain_id} 的嵌入时出错: {e}")
-#                 import traceback
-#                 traceback.print_exc()
-#                 return False
+         # 测试特定链的嵌入
+         if 'seq_info' in data and 'chains' in data['seq_info'] and len(data['seq_info']['chains']) > 0:
+             chain_id = data['seq_info']['chains'][0]['chain_id']
+             try:
+                 chain_data = embedder.seq_emb_af3(pdb_file, chain_id=chain_id)
+                 if verbose:
+                     print(f"成功生成链 {chain_id} 的嵌入 (形状: {chain_data['embeddings']['single'].shape})")
+             except Exception as e:
+                 print(f"生成链 {chain_id} 的嵌入时出错: {e}")
+                 import traceback
+                 traceback.print_exc()
+                 return False
         
-#         return True
-#     except Exception as e:
-#         print(f"嵌入生成失败: {e}")
-#         import traceback
-#         traceback.print_exc()
-#         return False
+         return True
+     except Exception as e:
+         print(f"嵌入生成失败: {e}")
+         import traceback
+         traceback.print_exc()
+         return False
 
 
 # def test_struct_emb_af3(pdb_file=None, weight_dir=None, verbose=True):
