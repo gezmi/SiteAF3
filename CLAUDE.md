@@ -40,6 +40,12 @@ Key flags for `run_SiteAF3.py`:
 - `--use_pocket_masked_af3_msa_for_embedding` — AF3 MSA with pocket mask (v1.1.0+, recommended)
 - `--use_pocket_diffusion_for_prediction` — fix receptor, diffuse ligand (default: True)
 - `--hotspot_cutoff` (default 8.0A), `--pocket_cutoff` (default 10.0A)
+- `--cdr_noise_spread` (default 3.0) — noise spread for CDR residues during pocket diffusion init
+- `--framework_noise_spread` (default 10.0) — noise spread for non-CDR framework residues during pocket diffusion init
+
+## Test configs with precomputed MSA
+
+- `rbd_7vnb-ab-101021_siteaf3_cdr.json` — RBD-nanobody (7vnb) with CDR regions on chain B and precomputed MSA. Converted from AF3 output at `/home/labs/schreiber/juliav/projects/nanobody_design/results/struct_pred/af3/default/rbd_7vnb-ab-101021_20251111_120225/rbd_7vnb-ab-101021_data.json`. Run with `run_pipeline_cdr.sh`, output to `sample_output_cdr/`.
 
 ## Architecture
 
@@ -81,6 +87,29 @@ Config files are in `test_input/` for reference. Structure:
 - `src/data/ligand_cutoff.py` (~950 lines) — Chain classification, hotspot/pocket generation logic
 - `AF3_code/model.py` — Modified AF3 model adding `Cond_Model` with pocket diffusion support
 - `src/analysis/iLDDT.py`, `src/analysis/RMSD.py` — Post-prediction quality metrics
+
+## Future: Multi-start CDR-aware diffusion (nanobody design)
+
+**Goal**: Improve nanobody-antigen structure prediction by biasing CDR loops toward the binding site during diffusion initialization.
+
+**Approach A (per-residue noise scaling)** — CDR residues get tighter noise spread around pocket center, framework residues get wider spread. Change `non_receptor_noise_spread_val = 7` in `AF3_code/model.py:760-790` from a scalar to a per-token array. CDR mask propagated from JSON config through `run_SiteAF3.py` → `run_cond_Diff.py` → `model.py`.
+
+**Multi-start extension** — Instead of 5 samples from one initialization, run 3 offset directions × 3 samples each. For each start: CDR loops always centered on pocket, framework offset by `random_unit_vector × ~15Å`. Rank all 9 outputs together. Implementation: loop around existing `_pocket_sample_diffusion()` in `run_cond_Diff.py` with different framework offsets. No changes to `model.py`'s inner diffusion loop.
+
+**CDR specification in JSON config**:
+```json
+{"protein": {"id": "B", "sequence": "EVQL...", "cdr_regions": [
+    {"name": "CDR1", "start": 26, "end": 32},
+    {"name": "CDR2", "start": 50, "end": 58},
+    {"name": "CDR3", "start": 95, "end": 110}
+]}}
+```
+
+**Key code locations**:
+- Noise initialization: `AF3_code/model.py:760-790` (`non_receptor_noise_spread_val = 7`, `center_pos` usage)
+- Receptor/ligand mask: `AF3_code/model.py:651-663` (`is_receptor` mask)
+- Feature prep: `src/diffusion/run_cond_Diff.py:326-480` (mask generation, center_pos)
+- Diffusion loop: `AF3_code/model.py:665-723` (conditional denoising per step)
 
 ## Known Compatibility Issue
 

@@ -757,8 +757,13 @@ class Cond_Model(Model):
     else: # Reshape to (1, key_shape)
         keys_init_na_per_sample = key_init_na_s[None, ...] 
 
-    # Non-receptor noise generation around center_pos with specified spread
-    non_receptor_noise_spread_val = 7  
+    # Per-token noise spread from CDR config, or default scalar
+    if 'noise_spread' in batch_dict and batch_dict['noise_spread'] is not None:
+        noise_spread_per_token = jnp.asarray(batch_dict['noise_spread'], dtype=noise_dtype)
+        # Shape: (1, num_tokens, 1, 1) — broadcasts with (num_samples, num_tokens, MAX_ATOMS, 3)
+        non_receptor_noise_spread_val = noise_spread_per_token[None, :, None, None]
+    else:
+        non_receptor_noise_spread_val = 7
     
     # center_pos is (3,). Tile for samples: (num_samples, 3)
     center_pos_s = jnp.tile(center_pos[None, :], (num_samples, 1))

@@ -399,25 +399,31 @@ def _prepare_features_for_inference(embedding_data: Dict, verbose: bool = False)
                 if chain['chain_type'] == 'protein':
                     receptor_chain_ids.add(chain['chain_id'])
         
-        # Generate is_receptor mask: only receptor chain residues are True
+        # Generate is_receptor mask and noise_spread array
         # Use actual token number instead of calculated value from seq_info
         is_receptor_list = []
+        noise_spread_list = []
         current_token_idx = 0
-        
+
+        cdr_regions = embedding_data.get('cdr_regions', {})
+        cdr_spread = embedding_data.get('cdr_noise_spread', 3.0)
+        fw_spread = embedding_data.get('framework_noise_spread', 10.0)
+        default_spread = 7.0
+
         for chain in embedding_data['seq_info']['chains']:
             chain_id = chain['chain_id']
             chain_type = chain['chain_type']
             is_receptor_chain = chain_id in receptor_chain_ids
-            
+            chain_cdr = cdr_regions.get(chain_id, [])
 
             if chain_type == 'ligand':
                 calculated_chain_length = chain['end_residue_index'] - chain['start_residue_index'] + 1
-                
+
                 remaining_tokens = actual_num_tokens - current_token_idx
                 if current_token_idx < actual_num_tokens:
                     current_chain_index = embedding_data['seq_info']['chains'].index(chain)
                     remaining_chains = embedding_data['seq_info']['chains'][current_chain_index + 1:]
-                    
+
                     if not remaining_chains:
                         # This is the last chain, use all remaining tokens
                         actual_chain_length = remaining_tokens
@@ -433,22 +439,40 @@ def _prepare_features_for_inference(embedding_data: Dict, verbose: bool = False)
             else:
                 # For protein and nucleic acids, use sequence length
                 actual_chain_length = len(chain['sequence'])
-            
+
             # Ensure token number does not exceed actual token number
             actual_chain_length = min(actual_chain_length, actual_num_tokens - current_token_idx)
 
             # Only receptor chain residues are marked as True
-            for _ in range(actual_chain_length):
+            for residue_idx in range(actual_chain_length):
                 if current_token_idx < actual_num_tokens:
                     is_receptor_list.append(is_receptor_chain and chain_type == 'protein')
+                    # Noise spread: CDR vs framework vs default
+                    if chain_cdr:
+                        is_cdr = any(cdr['start'] - 1 <= residue_idx < cdr['end'] for cdr in chain_cdr)
+                        noise_spread_list.append(cdr_spread if is_cdr else fw_spread)
+                    else:
+                        noise_spread_list.append(default_spread)
                     current_token_idx += 1
-        
-        # Truncate to actual length
+
+        # Truncate/pad to actual length
         while len(is_receptor_list) < actual_num_tokens:
             is_receptor_list.append(False)
+            noise_spread_list.append(default_spread)
         is_receptor_list = is_receptor_list[:actual_num_tokens]
-        
+        noise_spread_list = noise_spread_list[:actual_num_tokens]
+
         features_batch['is_receptor'] = np.array(is_receptor_list, dtype=np.bool_)
+
+        if cdr_regions:
+            features_batch['noise_spread'] = np.array(noise_spread_list, dtype=np.float32)
+            if verbose:
+                cdr_count = sum(1 for v in noise_spread_list if v == cdr_spread)
+                fw_count = sum(1 for v in noise_spread_list if v == fw_spread)
+                default_count = sum(1 for v in noise_spread_list if v == default_spread)
+                print(f"CDR-aware noise spread: {cdr_count} CDR tokens (spread={cdr_spread}), "
+                      f"{fw_count} framework tokens (spread={fw_spread}), "
+                      f"{default_count} default tokens (spread={default_spread})")
         
         if verbose:
             fixed_count = np.sum(features_batch['is_receptor'])

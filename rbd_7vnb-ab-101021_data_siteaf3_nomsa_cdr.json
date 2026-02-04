@@ -1,0 +1,43 @@
+{
+  "name": "RBD_7vnb-AB-101021",
+  "modelSeeds": [
+    1
+  ],
+  "receptor": [
+    {
+      "fixed_chain_id": [
+        "A"
+      ],
+      "rec_struct_path": "/home/labs/schreiber/juliav/projects/nanobody_design/data/sabdab_nano_structures/foldseek_clusters/ilddt075_after_083021_cluster_reps/7vnb_A.pdb",
+      "pocket_path": "/home/labs/schreiber/juliav/projects/nanobody_design/data/struct_pred_input/af/pocket/7vnb-AB-101021_pocket.pdb"
+    }
+  ],
+  "ligand": [
+    {
+      "protein": {
+        "id": "A",
+        "sequence": "CPFGEVFNATRFASVYAWNRKRISNCVADYSVLYNSASFSTFKCYGVSPTKLNDLCFTNVYADSFVIRGDEVRQIAPGQTGKIADYNYKLPDDFTGCVIAWNSNNLDSKVGGNYNYLYRLFRKSNLKPFERDISTEIYQAGSTPCNGVEGFNCYFPLQSYGFQPTNGVGYQPYRVVVLSFELLHAPATVCGPKKST",
+        "pairedMsa": "",
+        "templates": [],
+        "modifications": []
+      }
+    },
+    {
+      "protein": {
+        "id": "B",
+        "sequence": "EVQLVESGGGLVQPGGSLRLSCAASDFSFYDYEMSWVRQAPGKALEWIGSMYHSGRTYINPSLKSLVTISRDNSKNTLYLQMNSLRAEDTAMYYCVSNWASGSTGDYWGQGTLVTVSS",
+        "pairedMsa": "",
+        "templates": [],
+        "modifications": [],
+        "cdr_regions": [
+          {"name": "CDR1", "start": 25, "end": 33},
+          {"name": "CDR2", "start": 51, "end": 57},
+          {"name": "CDR3", "start": 96, "end": 107}
+        ]
+      }
+    }
+  ],
+  "dialect": "SiteAF3",
+  "version": 3,
+  "userCCD": null
+}

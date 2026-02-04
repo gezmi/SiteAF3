@@ -197,6 +197,18 @@ def create_arg_parser():
         action="store_true",
         help="Enable verbose output."
     )
+    parser.add_argument(
+        "--cdr_noise_spread",
+        type=float,
+        default=3.0,
+        help="Noise spread for CDR residues during pocket diffusion initialization. Default: 3.0"
+    )
+    parser.add_argument(
+        "--framework_noise_spread",
+        type=float,
+        default=10.0,
+        help="Noise spread for non-CDR (framework) residues during pocket diffusion initialization. Default: 10.0"
+    )
     return parser
 
 def main(args):
@@ -277,6 +289,12 @@ def main(args):
                     }
                     ligand_chain_ids.append(chain_id)
                     ligand_type_from_config = 'protein'
+                    # Parse CDR regions for nanobody-aware diffusion
+                    cdr_regions = protein_info.get("cdr_regions")
+                    if cdr_regions:
+                        ligand_specs[chain_id]["cdr_regions"] = cdr_regions
+                        if args.verbose:
+                            print(f"  Parsed CDR regions for chain {chain_id}: {len(cdr_regions)} regions")
                     # Read precomputed MSA/templates if unpaired_msa key is explicitly present
                     if "unpaired_msa" in protein_info:
                         precomputed_msa[chain_id] = {
@@ -702,6 +720,19 @@ def main(args):
         embedding_time = time.time() - embedding_start_time
         if args.verbose:
             print(f"Embedding generation completed for seed {seed_value} in {embedding_time:.2f} seconds.")
+
+        # Add CDR info for diffusion (not used by embedding stage)
+        cdr_info = {}
+        for chain_id, spec in ligand_specs.items():
+            if "cdr_regions" in spec:
+                cdr_info[chain_id] = spec["cdr_regions"]
+        if cdr_info:
+            embedding_data['cdr_regions'] = cdr_info
+            embedding_data['cdr_noise_spread'] = args.cdr_noise_spread
+            embedding_data['framework_noise_spread'] = args.framework_noise_spread
+            if args.verbose:
+                print(f"Injected CDR regions for chains {list(cdr_info.keys())} into embedding_data")
+                print(f"  CDR noise spread: {args.cdr_noise_spread}, framework noise spread: {args.framework_noise_spread}")
 
         # 5. Predict structure using the generated embeddings for the current seed
         if args.verbose:
