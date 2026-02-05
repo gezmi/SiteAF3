@@ -761,7 +761,20 @@ class Embedder():
             print(f"Skipping AF3 data pipeline: using precomputed MSA for {len(precomputed_msa)} chain(s)")
         elif not use_af3_msa and not use_pocket_masked_af3_msa and self.verbose:
             print("Skipping AlphaFold3 MSA generation step")
-        
+
+        # Capture generated MSA data for saving (after all MSA processing)
+        generated_msa_data = {}
+        for chain in fold_input.chains:
+            if isinstance(chain, folding_input.ProteinChain):
+                generated_msa_data[chain.id] = {
+                    'unpaired_msa': chain.unpaired_msa or "",
+                    'paired_msa': chain.paired_msa or "",
+                }
+            elif isinstance(chain, folding_input.RnaChain):
+                generated_msa_data[chain.id] = {
+                    'unpaired_msa': chain.unpaired_msa or "",
+                }
+
         if self.verbose:
             print("Featurizing input...")
         
@@ -984,6 +997,7 @@ class Embedder():
             'protein_mask': protein_mask_full, # This is the mask aligned with final fold_input
             'pocket_mask': final_pocket_mask,   # This is the adjusted mask
             'hotspot_mask': final_hotspot_mask, # This is the adjusted mask
+            'generated_msa': generated_msa_data,
         }
         
         return results
