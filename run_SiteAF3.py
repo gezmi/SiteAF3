@@ -197,6 +197,12 @@ def create_arg_parser():
         action="store_true",
         help="Enable verbose output."
     )
+    parser.add_argument(
+        "--save_init_coords",
+        action="store_true",
+        default=False,
+        help="Save initial noised coordinates (before diffusion) as PDB files. Useful for visualizing ligand starting positions."
+    )
     return parser
 
 def main(args):
@@ -703,6 +709,33 @@ def main(args):
         if args.verbose:
             print(f"Embedding generation completed for seed {seed_value} in {embedding_time:.2f} seconds.")
 
+        # Save config with generated MSA data for reuse (write once, overwrites harmlessly on subsequent seeds)
+        generated_msa = embedding_data.get('generated_msa', {})
+        has_msa = any(v.get('unpaired_msa') for v in generated_msa.values())
+        if generated_msa and has_msa:
+            import copy
+            reusable_config = copy.deepcopy(config_data)
+
+            # Inject MSA into receptor config (keys: unpairedMsa, pairedMsa)
+            for rc_id in receptor_chain_ids:
+                if rc_id in generated_msa:
+                    reusable_config["receptor"][0]["unpairedMsa"] = generated_msa[rc_id].get("unpaired_msa", "")
+                    reusable_config["receptor"][0]["pairedMsa"] = generated_msa[rc_id].get("paired_msa", "")
+
+            # Inject MSA into ligand protein entries (keys: unpaired_msa, pairedMsa)
+            for lig_entry in reusable_config.get("ligand", []):
+                if "protein" in lig_entry:
+                    lig_id = lig_entry["protein"].get("id")
+                    if lig_id and lig_id in generated_msa:
+                        lig_entry["protein"]["unpaired_msa"] = generated_msa[lig_id].get("unpaired_msa", "")
+                        lig_entry["protein"]["pairedMsa"] = generated_msa[lig_id].get("paired_msa", "")
+
+            data_json_path = case_specific_output_dir / f"{case_name}_data.json"
+            with open(data_json_path, 'w') as f:
+                json.dump(reusable_config, f, indent=2)
+            if args.verbose:
+                print(f"Saved reusable config with MSA data to: {data_json_path}")
+
         # 5. Predict structure using the generated embeddings for the current seed
         if args.verbose:
             print(f"Starting structure prediction for seed {seed_value}. Output directory: {seed_specific_run_dir}")
@@ -711,11 +744,12 @@ def main(args):
         prediction_start_time = time.time()
         try:
             predict_structure_from_embedding(
-                embedding_data=embedding_data, 
+                embedding_data=embedding_data,
                 model_runner=pred_runner, # Use the runner initialized outside the loop
-                output_dir=seed_specific_run_dir, 
+                output_dir=seed_specific_run_dir,
                 verbose=args.verbose,
-                rng_seed=seed_value
+                rng_seed=seed_value,
+                save_init_coords_dir=str(seed_specific_run_dir) if args.save_init_coords else None
             )
         except Exception as e:
             print(f"Error during structure prediction for seed {seed_value}: {e}")

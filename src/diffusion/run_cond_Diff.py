@@ -247,6 +247,128 @@ def load_embedding_file(embedding_path: str, verbose: bool = False) -> Dict:
         raise RuntimeError(f"Error loading embedding file: {e}")
 
 
+def _write_init_coords_pdb_from_result(
+    init_positions: np.ndarray,
+    atom_mask: np.ndarray,
+    embedding_data: Dict,
+    output_dir: str,
+    seed: int,
+    verbose: bool = False
+) -> None:
+    """Write initial noised coordinates as PDB files.
+
+    This writes simple PDB files showing where atoms were initialized before diffusion.
+    Uses seq_info from embedding_data to get chain/residue information.
+
+    Args:
+        init_positions: Initial atom coordinates, shape (num_samples, num_tokens, 24, 3)
+        atom_mask: Mask indicating real atoms, shape (num_samples, num_tokens, 24)
+        embedding_data: Dictionary containing seq_info with chain information
+        output_dir: Directory to write PDB files to
+        seed: Random seed used for this run (for filename)
+        verbose: Whether to print status messages
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Convert to numpy if needed
+    if hasattr(init_positions, 'block_until_ready'):
+        init_positions = np.asarray(init_positions)
+    if hasattr(atom_mask, 'block_until_ready'):
+        atom_mask = np.asarray(atom_mask)
+
+    num_samples = init_positions.shape[0]
+    num_tokens = init_positions.shape[1]
+
+    # Get chain info from embedding_data
+    seq_info = embedding_data.get('seq_info', {})
+    chains_info = seq_info.get('chains', [])
+
+    # Build token-to-chain mapping
+    # Each token corresponds to one residue; we need to map token_idx to chain_id, res_id, res_name
+    token_chain_ids = []
+    token_res_ids = []
+    token_res_names = []
+
+    for chain_info in chains_info:
+        chain_id = chain_info.get('chain_id', 'A')
+        sequence = chain_info.get('sequence', '')
+        chain_type = chain_info.get('chain_type', 'protein')
+
+        for res_idx, res_char in enumerate(sequence):
+            token_chain_ids.append(chain_id)
+            token_res_ids.append(res_idx + 1)  # 1-indexed
+            # Convert single-letter to 3-letter code for proteins
+            if chain_type == 'protein':
+                aa_map = {
+                    'A': 'ALA', 'R': 'ARG', 'N': 'ASN', 'D': 'ASP', 'C': 'CYS',
+                    'Q': 'GLN', 'E': 'GLU', 'G': 'GLY', 'H': 'HIS', 'I': 'ILE',
+                    'L': 'LEU', 'K': 'LYS', 'M': 'MET', 'F': 'PHE', 'P': 'PRO',
+                    'S': 'SER', 'T': 'THR', 'W': 'TRP', 'Y': 'TYR', 'V': 'VAL',
+                    'X': 'UNK'
+                }
+                token_res_names.append(aa_map.get(res_char.upper(), 'UNK'))
+            elif chain_type in ['rna', 'dna']:
+                # Nucleotides use single letter as residue name for simplicity
+                nuc_map = {'A': 'A', 'U': 'U', 'G': 'G', 'C': 'C', 'T': 'T'}
+                token_res_names.append(nuc_map.get(res_char.upper(), res_char.upper()))
+            else:
+                token_res_names.append('UNK')
+
+    # Standard atom names for the first few atoms (CA, C, N, O for proteins; simplified)
+    # AF3 uses up to 24 atoms per token in token-atoms layout
+    standard_atom_names = ['N', 'CA', 'C', 'O', 'CB', 'CG', 'CD', 'CE', 'NZ', 'OG',
+                          'OD1', 'OD2', 'OE1', 'OE2', 'ND1', 'ND2', 'NE', 'NH1', 'NH2',
+                          'SD', 'SG', 'OH', 'OXT', 'H']
+
+    for sample_idx in range(num_samples):
+        lines = [f"REMARK  Initial noised coordinates before diffusion (seed={seed}, sample={sample_idx})"]
+        atom_serial = 1
+
+        for token_idx in range(min(num_tokens, len(token_chain_ids))):
+            chain_id = token_chain_ids[token_idx] if token_idx < len(token_chain_ids) else 'A'
+            res_id = token_res_ids[token_idx] if token_idx < len(token_res_ids) else token_idx + 1
+            res_name = token_res_names[token_idx] if token_idx < len(token_res_names) else 'UNK'
+
+            for atom_idx in range(24):
+                if atom_mask[sample_idx, token_idx, atom_idx] < 0.5:
+                    continue
+
+                x, y, z = init_positions[sample_idx, token_idx, atom_idx]
+
+                # Get atom name
+                atom_name = standard_atom_names[atom_idx] if atom_idx < len(standard_atom_names) else f"X{atom_idx}"
+                element = atom_name[0] if atom_name else 'X'
+
+                # Truncate chain_id to single character for PDB format
+                chain_id_char = str(chain_id)[0] if chain_id else 'A'
+                res_name_str = str(res_name)[:3] if res_name else 'UNK'
+
+                # Format atom name for PDB (4 characters)
+                if len(atom_name) < 4:
+                    atom_name_fmt = f" {atom_name:<3s}"
+                else:
+                    atom_name_fmt = atom_name[:4]
+
+                # PDB ATOM line format
+                line = (
+                    f"ATOM  {atom_serial:5d} {atom_name_fmt} {res_name_str:>3s} "
+                    f"{chain_id_char}{res_id:4d}    "
+                    f"{float(x):8.3f}{float(y):8.3f}{float(z):8.3f}"
+                    f"  1.00  0.00          {element:>2s}"
+                )
+                lines.append(line)
+                atom_serial += 1
+
+        lines.append("END")
+
+        out_path = os.path.join(output_dir, f"init_coords_seed-{seed}_sample-{sample_idx}.pdb")
+        with open(out_path, 'w') as f:
+            f.write('\n'.join(lines))
+
+        if verbose:
+            print(f"Saved initial coordinates to: {out_path}")
+
+
 def create_fold_input_from_embedding(embedding_data: Dict, verbose: bool = False) -> folding_input.Input:
     """
     Create folding_input object from embedding data
@@ -673,31 +795,55 @@ def predict_structure_from_embedding(
     model_runner: ModelRunner,
     output_dir: pathlib.Path,
     verbose: bool = False,
-    rng_seed: int = 42
+    rng_seed: int = 42,
+    save_init_coords_dir: str = None
 ) -> None:
     """
     Predict structure from embedding data
-    
+
     Args:
         embedding_data: Embedding data
         model_runner: Model runner
         output_dir: Output directory
         verbose: Whether to show detailed information
         rng_seed: Random seed for model inference
-        
+        save_init_coords_dir: If provided, save initial noised coordinates as PDB files to this directory
+
     Returns:
         None
     """
     if verbose:
         print("Start predicting structure from embedding data...")
-    
+
     # 1. Prepare features
     features_batch_dict = _prepare_features_for_inference(embedding_data, verbose=verbose)
+
+    # Pass save_init_coords_dir and rng_seed to the model via batch_dict
+    if save_init_coords_dir:
+        features_batch_dict['save_init_coords_dir'] = save_init_coords_dir
+        features_batch_dict['rng_seed_for_output'] = rng_seed  # For naming output files
+        if verbose:
+            print(f"Will save initial noised coordinates to: {save_init_coords_dir}")
     
     # 2. Run inference
     if verbose:
         print("Run model inference...")
     raw_model_result = model_runner.run_inference(features_batch_dict, rng_seed=rng_seed)
+
+    # 2b. Save initial noised coordinates if requested
+    if save_init_coords_dir and 'diffusion_samples' in raw_model_result:
+        diffusion_samples = raw_model_result['diffusion_samples']
+        if 'init_positions' in diffusion_samples:
+            _write_init_coords_pdb_from_result(
+                init_positions=diffusion_samples['init_positions'],
+                atom_mask=diffusion_samples['mask'],
+                embedding_data=embedding_data,
+                output_dir=save_init_coords_dir,
+                seed=rng_seed,
+                verbose=verbose
+            )
+        elif verbose:
+            print("Warning: init_positions not found in model result, cannot save initial coordinates")
 
     # 3. Extract inference results and embeddings
     if verbose:

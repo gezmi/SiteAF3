@@ -814,4 +814,9 @@ class Cond_Model(Model):
     # 6. Mask final results and return
     final_positions_out_masked_s = final_positions_out_s * atom_mask_full_s[..., None]
 
-    return {'atom_positions': final_positions_out_masked_s, 'mask': atom_mask_full_s}
+    # Return both final and initial positions (initial for visualization/debugging)
+    return {
+        'atom_positions': final_positions_out_masked_s,
+        'mask': atom_mask_full_s,
+        'init_positions': positions_xT_s  # Initial noised positions before diffusion
+    }
