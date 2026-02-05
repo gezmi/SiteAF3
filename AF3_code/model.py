@@ -788,7 +788,15 @@ class Cond_Model(Model):
         receptor_xT_s,
         non_receptor_xT_s
     )
-    
+
+    # Unscaled initial positions for output (physical coordinates, not diffusion-scaled)
+    # positions_xT_s has non-receptor scaled by sigma_max for diffusion; this version is unscaled
+    init_positions_for_output_s = jnp.where(
+        receptor_mask_for_broadcast_s,
+        receptor_xT_s,              # Receptor: already unscaled
+        na_coords_component_s       # Non-receptor: unscaled (center + spread*noise)
+    )
+
     # Prepare initial carry for hk.scan
     if num_samples > 1:
         scan_init_keys_for_loop_s = jax.random.split(key_loop_init_keys_s, num_samples)
@@ -818,5 +826,5 @@ class Cond_Model(Model):
     return {
         'atom_positions': final_positions_out_masked_s,
         'mask': atom_mask_full_s,
-        'init_positions': positions_xT_s  # Initial noised positions before diffusion
+        'init_positions': init_positions_for_output_s  # Unscaled physical coordinates for output
     }

@@ -11,6 +11,10 @@ SiteAF3 is a molecular interaction analysis platform that extends AlphaFold3 wit
 - Python 3.11, CUDA 12.6, JAX 0.4.34
 - Conda env defined in `SiteAF3_env.yml` (env name: `alphafold3`)
 - Requires AlphaFold3 at commit `7a4a2f7` — the modified `AF3_code/model.py` must replace `alphafold3/src/alphafold3/model/model.py` before installing AF3
+- **CRITICAL**: Two copies of model.py exist and must stay in sync:
+  - `AF3_code/model.py` — source version (edit this, tracked in git)
+  - `env/lib/python3.11/site-packages/alphafold3/model/model.py` — installed version (actually imported at runtime)
+  - After any edit: `cp AF3_code/model.py env/lib/python3.11/site-packages/alphafold3/model/model.py`
 - No formal test suite, build system, or linter is configured
 
 ## Running the Pipeline
